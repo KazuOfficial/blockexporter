@@ -7,6 +7,10 @@ A Minecraft mod that exports item renders as they appear in inventory slots.
 
 ![Export Menu](example.png)
 
+## Downloads
+Download BlockExporter from [Modrinth](https://modrinth.com/mod/blockexporter) or
+[CurseForge](https://www.curseforge.com/minecraft/mc-mods/blockexporter).
+
 ## Supported Platforms
 - Modern Minecraft with:
   - Fabric
