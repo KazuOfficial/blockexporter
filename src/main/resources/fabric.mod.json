@@ -1,0 +1,31 @@
+{
+	"schemaVersion": 1,
+	"id": "blockexporter",
+	"version": "0.1.0",
+	"name": "BlockExporter",
+	"description": "A mod that exports item renders as they appear in inventory slots.",
+	"authors": [
+		"KazuOfficial"
+	],
+	"contact": {
+		"homepage": "https://github.com/kazuofficial/blockexporter",
+		"sources": "https://github.com/kazuofficial/blockexporter"
+	},
+	"license": "MIT",
+	"icon": "assets/blockexporter/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.github.kazuofficial.blockexporter.BlockExporter"
+		],
+		"client": [
+			"com.github.kazuofficial.blockexporter.BlockExporterClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.16.14",
+		"minecraft": "~1.21.7",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
