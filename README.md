@@ -1,6 +1,7 @@
 <img src="src/main/resources/assets/blockexporter/icon.png" width="128">
 
 # Block Exporter
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/T6T41HDJJ4)
 
 A Minecraft mod that exports item renders as they appear in inventory slots.
 
