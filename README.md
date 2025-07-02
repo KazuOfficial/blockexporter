@@ -1,14 +1,19 @@
 # Block Exporter
 
-A Minecraft Fabric mod that exports item textures as they appear in inventory slots.
+A Minecraft mod that exports item textures as they appear in inventory slots.
+
+## Supported Platforms
+- Modern Minecraft with:
+  - Fabric
+  - NeoForge
+  - Forge
+- Minecraft Beta 1.7.3 (with ModLoader)
 
 ## Requirements
-- Minecraft 1.21.7
-- Fabric Loader
-- Fabric API
+- One of the supported mod loaders mentioned above
 
 ## Usage
-1. Install the mod along with Fabric API
+1. Install the mod along with the required API for your mod loader
 2. Launch Minecraft
 3. Press the "i" key to open the export menu
 4. Find the exported textures in the `item_exports` folder inside your Minecraft directory
