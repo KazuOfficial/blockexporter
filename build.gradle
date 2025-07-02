@@ -1,74 +1,65 @@
-plugins {
-	id 'fabric-loom' version "${loom_version}"
-	id 'maven-publish'
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net/' }
+        jcenter()
+    }
+    dependencies {
+        classpath group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '5.1.+'
+    }
 }
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'java'
 
-version = project.mod_version
-group = project.maven_group
+version = '0.1.0'
+group = 'com.github.kazuofficial.blockexporter'
+archivesBaseName = 'blockexporter'
 
-base {
-	archivesName = project.archives_base_name
+java.toolchain.languageVersion = JavaLanguageVersion.of(8)
+compileJava {
+	sourceCompatibility = "8"
+	targetCompatibility = "8"
 }
 
 repositories {
-}
-
-loom {
-	splitEnvironmentSourceSets()
-
-	mods {
-		"blockexporter" {
-			sourceSet sourceSets.main
-			sourceSet sourceSets.client
-		}
+	maven {
+		url = "https://maven.minecraftforge.net/"
 	}
-
 }
 
 dependencies {
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-
-	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	
+    minecraft 'net.minecraftforge:forge:1.13.2-25.0.223'
 }
 
-processResources {
-	inputs.property "version", project.version
+minecraft {
+    mappings channel: 'snapshot', version: '20180921-1.13'
 
-	filesMatching("fabric.mod.json") {
-		expand "version": inputs.properties.version
-	}
-}
+    runs {
+        client {
+            workingDirectory project.file('run')
 
-tasks.withType(JavaCompile).configureEach {
-	it.options.release = 21
-}
+            property 'forge.logging.markers', 'SCAN,REGISTRIES,REGISTRYDUMP'
 
-java {
-	withSourcesJar()
+            property 'forge.logging.console.level', 'debug'
 
-	sourceCompatibility = JavaVersion.VERSION_21
-	targetCompatibility = JavaVersion.VERSION_21
-}
+            mods {
+                blockexporter {
+                    source sourceSets.main
+                }
+            }
+        }
 
-jar {
-	inputs.property "archivesName", project.base.archivesName
+        server {
+            workingDirectory project.file('run')
 
-	from("LICENSE") {
-		rename { "${it}_${inputs.properties.archivesName}"}
-	}
-}
+            property 'forge.logging.markers', 'SCAN,REGISTRIES,REGISTRYDUMP'
 
-publishing {
-	publications {
-		create("mavenJava", MavenPublication) {
-			artifactId = project.archives_base_name
-			from components.java
-		}
-	}
+            property 'forge.logging.console.level', 'debug'
 
-	repositories {
-	}
+            mods {
+                blockexporter {
+                    source sourceSets.main
+                }
+            }
+        }
+    }
 }

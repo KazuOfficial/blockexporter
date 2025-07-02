@@ -1,17 +1,28 @@
 package com.github.kazuofficial.blockexporter;
 
-import net.fabricmc.api.ModInitializer;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+@Mod("blockexporter")
+public class BlockExporter {
+    public static final String MODID = "blockexporter";
+    public static final Logger LOGGER = LogManager.getLogger();
 
-public class BlockExporter implements ModInitializer {
-	public static final String MOD_ID = "blockexporter";
+    public BlockExporter() {
+        FMLJavaModLoadingContext.get().getModEventBus().addListener(this::setup);
+        FMLJavaModLoadingContext.get().getModEventBus().addListener(this::doClientStuff);
+    }
 
-	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+    private void setup(final FMLCommonSetupEvent event) {
+        LOGGER.info("BlockExporter mod initialized");
+    }
 
-	@Override
-	public void onInitialize() {
-		LOGGER.info("Block Exporter mod initialized!");
-	}
+    private void doClientStuff(final FMLClientSetupEvent event) {
+        LOGGER.info("BlockExporter client setup");
+        BlockExporterClient.registerKeyBinding();
+    }
 }

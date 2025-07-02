@@ -1,4 +1,4 @@
-<img src="src/main/resources/assets/blockexporter/icon.png" width="128">
+<img src="src/main/resources/icon.png" width="128">
 
 # Block Exporter
 
