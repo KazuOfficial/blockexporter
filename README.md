@@ -16,7 +16,7 @@ Download BlockExporter from [Modrinth](https://modrinth.com/mod/blockexporter) o
   - Fabric
   - NeoForge
   - Forge
-- Minecraft Beta 1.7.3 (with ModLoader)
+- Minecraft Beta 1.7.3 & Alpha 1.1.2_01 (with ModLoader)
 
 ## Requirements
 - One of the supported mod loaders mentioned above
