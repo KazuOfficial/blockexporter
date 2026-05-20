@@ -1,29 +1,28 @@
 package com.github.kazuofficial.blockexporter;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.util.InputUtil;
-import net.minecraft.util.Identifier;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.minecraft.client.KeyMapping;
 
 import org.lwjgl.glfw.GLFW;
 
 public class BlockExporterClient implements ClientModInitializer {
-	private static KeyBinding exportKeybind;
+	private static KeyMapping exportKeybind;
 
 	@Override
 	public void onInitializeClient() {
-		exportKeybind = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+		exportKeybind = KeyMappingHelper.registerKeyMapping(new KeyMapping(
 			"key.blockexporter.export",
-			InputUtil.Type.KEYSYM,
+			InputConstants.Type.KEYSYM,
 			GLFW.GLFW_KEY_I,
-			KeyBinding.Category.create(Identifier.of("blockexporter", "category"))
+			KeyMapping.Category.MISC
 		));
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			while (exportKeybind.wasPressed()) {
-				if (client.currentScreen == null) {
+			while (exportKeybind.consumeClick()) {
+				if (client.screen == null) {
 					client.setScreen(new ExportScreen());
 				}
 			}

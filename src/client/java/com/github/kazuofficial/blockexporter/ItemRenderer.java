@@ -1,27 +1,27 @@
 package com.github.kazuofficial.blockexporter;
 
+import com.mojang.blaze3d.ProjectionType;
 import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.platform.Lighting;
+import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.CommandEncoder;
-import com.mojang.blaze3d.systems.ProjectionType;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.blaze3d.vertex.PoseStack;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.gl.SimpleFramebuffer;
-import net.minecraft.client.render.*;
-import net.minecraft.client.render.command.OrderedRenderCommandQueue;
-import net.minecraft.client.render.command.RenderDispatcher;
-import net.minecraft.client.render.item.ItemRenderState;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.item.ItemDisplayContext;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.ColorHelper;
-
-import org.joml.Matrix4f;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.Projection;
+import net.minecraft.client.renderer.ProjectionMatrixBuffer;
+import net.minecraft.client.renderer.SubmitNodeStorage;
+import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -36,184 +36,178 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 public class ItemRenderer implements AutoCloseable {
-    private final int textureSize;
-    private final Path exportDirectory;
-    private final MinecraftClient client;
-    private final SimpleFramebuffer framebuffer;
-    private final RawProjectionMatrix projectionMatrix;
-    private final ItemRenderState itemRenderState;
-    private final ExecutorService fileWriteExecutor;
-    private final Semaphore fileWriteSemaphore;
-    private final ConcurrentLinkedQueue<ItemStack> failedExports;
-    
-    private final MatrixStack matrices;
-    private final Matrix4f orthoMatrix;
-    private final OrderedRenderCommandQueue renderCommandQueue;
-    private final RenderDispatcher renderDispatcher;
-    private final VertexConsumerProvider.Immediate vertexConsumers;
+	private final int textureSize;
+	private final Path exportDirectory;
+	private final Minecraft client;
+	private final TextureTarget framebuffer;
+	private final Projection projection;
+	private final ProjectionMatrixBuffer projectionMatrixBuffer;
+	private final ItemStackRenderState itemRenderState;
+	private final ExecutorService fileWriteExecutor;
+	private final Semaphore fileWriteSemaphore;
+	private final ConcurrentLinkedQueue<ItemStack> failedExports;
 
-    public ItemRenderer(int textureSize) {
-        this.textureSize = textureSize;
-        this.client = MinecraftClient.getInstance();
-        this.exportDirectory = client.runDirectory.toPath().resolve("item_exports");
-        this.projectionMatrix = new RawProjectionMatrix("item-exporter");
-        this.itemRenderState = new ItemRenderState();
-        int coreCount = Runtime.getRuntime().availableProcessors();
-        this.fileWriteExecutor = Executors.newFixedThreadPool(Math.max(2, coreCount / 2));
-        this.fileWriteSemaphore = new Semaphore(coreCount);
-        this.failedExports = new ConcurrentLinkedQueue<>();
+	private final PoseStack matrices;
 
-        this.matrices = new MatrixStack();
-        this.orthoMatrix = new Matrix4f().setOrtho(0.0F, this.textureSize, this.textureSize, 0.0F, -1000.0F, 1000.0F);
-        this.renderCommandQueue = this.client.gameRenderer.getEntityRenderCommandQueue();
-        this.renderDispatcher = this.client.gameRenderer.getEntityRenderDispatcher();
-        this.vertexConsumers = this.client.getBufferBuilders().getEntityVertexConsumers();
+	public ItemRenderer(int textureSize) {
+		this.textureSize = textureSize;
+		this.client = Minecraft.getInstance();
+		this.exportDirectory = client.gameDirectory.toPath().resolve("item_exports");
+		this.projection = new Projection();
+		this.projection.setupOrtho(-1000.0f, 1000.0f, this.textureSize, this.textureSize, true);
+		this.projectionMatrixBuffer = new ProjectionMatrixBuffer("item-exporter");
+		this.itemRenderState = new ItemStackRenderState();
+		int coreCount = Runtime.getRuntime().availableProcessors();
+		this.fileWriteExecutor = Executors.newFixedThreadPool(Math.max(2, coreCount / 2));
+		this.fileWriteSemaphore = new Semaphore(coreCount);
+		this.failedExports = new ConcurrentLinkedQueue<>();
 
-        try {
-            Files.createDirectories(exportDirectory);
-            BlockExporter.LOGGER.info("Created export directory: {}", exportDirectory.toAbsolutePath());
-        } catch (IOException e) {
-            BlockExporter.LOGGER.error("Failed to create export directory: {}", exportDirectory.toAbsolutePath(), e);
-            throw new RuntimeException("Failed to create export directory", e);
-        }
-        
-        this.framebuffer = new SimpleFramebuffer("item-exporter", this.textureSize, this.textureSize, true);
-    }
+		this.matrices = new PoseStack();
 
-    public void exportItemsBatch(List<ItemStack> stacks, AtomicInteger completionCounter) {
-        if (stacks == null || stacks.isEmpty()) {
-            return;
-        }
+		try {
+			Files.createDirectories(exportDirectory);
+			BlockExporter.LOGGER.info("Created export directory: {}", exportDirectory.toAbsolutePath());
+		} catch (IOException e) {
+			BlockExporter.LOGGER.error("Failed to create export directory: {}", exportDirectory.toAbsolutePath(), e);
+			throw new RuntimeException("Failed to create export directory", e);
+		}
 
-        var oldColor = RenderSystem.outputColorTextureOverride;
-        var oldDepth = RenderSystem.outputDepthTextureOverride;
-        
-        try {
-            RenderSystem.outputColorTextureOverride = this.framebuffer.getColorAttachmentView();
-            RenderSystem.outputDepthTextureOverride = this.framebuffer.getDepthAttachmentView();
-            RenderSystem.setProjectionMatrix(this.projectionMatrix.set(orthoMatrix), ProjectionType.ORTHOGRAPHIC);
+		this.framebuffer = new TextureTarget("item-exporter", this.textureSize, this.textureSize, true);
+	}
 
-            for (ItemStack stack : stacks) {
-                if (stack == null || stack.isEmpty()) {
-                    continue;
-                }
-                
-                exportSingleItemFast(stack, completionCounter);
-            }
+	public void exportItemsBatch(List<ItemStack> stacks, AtomicInteger completionCounter) {
+		if (stacks == null || stacks.isEmpty()) {
+			return;
+		}
 
-        } catch (Exception e) {
-            BlockExporter.LOGGER.error("Failed to export item batch", e);
-        } finally {
-            RenderSystem.outputColorTextureOverride = oldColor;
-            RenderSystem.outputDepthTextureOverride = oldDepth;
-        }
-    }
+		var oldColor = RenderSystem.outputColorTextureOverride;
+		var oldDepth = RenderSystem.outputDepthTextureOverride;
 
-    private void exportSingleItemFast(ItemStack stack, AtomicInteger completionCounter) {
-        Identifier id = Registries.ITEM.getId(stack.getItem());
-        
-        try {
-            client.getItemModelManager().clearAndUpdate(this.itemRenderState, stack, ItemDisplayContext.GUI, client.world, null, 0);
-            
-            CommandEncoder commandEncoder = RenderSystem.getDevice().createCommandEncoder();
-            commandEncoder.clearColorAndDepthTextures(
-                this.framebuffer.getColorAttachment(), 0x00000000,
-                this.framebuffer.getDepthAttachment(), 1.0F
-            );
+		try {
+			RenderSystem.outputColorTextureOverride = this.framebuffer.getColorTextureView();
+			RenderSystem.outputDepthTextureOverride = this.framebuffer.getDepthTextureView();
+			RenderSystem.setProjectionMatrix(this.projectionMatrixBuffer.getBuffer(this.projection), ProjectionType.ORTHOGRAPHIC);
 
-            matrices.push();
-            matrices.translate(this.textureSize / 2.0, this.textureSize / 2.0, 100.0);
-            matrices.scale(this.textureSize, -this.textureSize, this.textureSize);
+			for (ItemStack stack : stacks) {
+				if (stack == null || stack.isEmpty()) {
+					continue;
+				}
+				exportSingleItemFast(stack, completionCounter);
+			}
 
-            if (this.itemRenderState.isSideLit()) {
-                client.gameRenderer.getDiffuseLighting().setShaderLights(DiffuseLighting.Type.ITEMS_3D);
-            } else {
-                client.gameRenderer.getDiffuseLighting().setShaderLights(DiffuseLighting.Type.ITEMS_FLAT);
-            }
-            
-            this.itemRenderState.render(matrices, renderCommandQueue, 15728880, OverlayTexture.DEFAULT_UV, 0);
-            matrices.pop();
+		} catch (Exception e) {
+			BlockExporter.LOGGER.error("Failed to export item batch", e);
+		} finally {
+			RenderSystem.outputColorTextureOverride = oldColor;
+			RenderSystem.outputDepthTextureOverride = oldDepth;
+		}
+	}
 
-            this.renderDispatcher.render();
-            this.vertexConsumers.draw();
+	private void exportSingleItemFast(ItemStack stack, AtomicInteger completionCounter) {
+		Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
 
-            takeScreenshotAsync(this.framebuffer, id, stack, completionCounter);
+		try {
+			client.getItemModelResolver().updateForTopItem(this.itemRenderState, stack, ItemDisplayContext.GUI, client.level, null, 0);
 
-        } catch (Exception e) {
-            BlockExporter.LOGGER.error("Failed to export item: {}", id, e);
-            this.failedExports.add(stack);
-            completionCounter.incrementAndGet();
-        }
-    }
+			CommandEncoder commandEncoder = RenderSystem.getDevice().createCommandEncoder();
+			commandEncoder.clearColorAndDepthTextures(
+				this.framebuffer.getColorTexture(), 0x00000000,
+				this.framebuffer.getDepthTexture(), 1.0F
+			);
 
-    private void takeScreenshotAsync(Framebuffer framebuffer, Identifier itemId, ItemStack itemStack, AtomicInteger completionCounter) {
-        takeScreenshot(framebuffer, (image) -> {
-            CompletableFuture.runAsync(() -> {
-                try {
-                    this.fileWriteSemaphore.acquire();
-                    Path filePath = exportDirectory.resolve(itemId.getNamespace() + "_" + itemId.getPath() + ".png");
-                    image.writeTo(filePath);
-                    BlockExporter.LOGGER.debug("Async exported: {}", filePath.getFileName());
-                } catch (IOException e) {
-                    BlockExporter.LOGGER.error("Failed to save exported item image: {}", itemId, e);
-                    this.failedExports.add(itemStack);
-                } catch (InterruptedException e) {
-                    BlockExporter.LOGGER.error("Screenshot thread interrupted for item: {}", itemId, e);
-                    this.failedExports.add(itemStack);
-                    Thread.currentThread().interrupt();
-                } finally {
-                    if (image != null) {
-                        image.close();
-                    }
-                    this.fileWriteSemaphore.release();
-                    completionCounter.incrementAndGet();
-                }
-            }, fileWriteExecutor);
-        });
-    }
+			FeatureRenderDispatcher featureRenderDispatcher = client.gameRenderer.getFeatureRenderDispatcher();
+			SubmitNodeStorage submitNodeStorage = featureRenderDispatcher.getSubmitNodeStorage();
 
-	public static void takeScreenshot(Framebuffer framebuffer, Consumer<NativeImage> callback) {
+			matrices.pushPose();
+			matrices.translate(this.textureSize / 2.0F, this.textureSize / 2.0F, 0.0F);
+			matrices.scale(this.textureSize, -this.textureSize, this.textureSize);
+
+			if (!this.itemRenderState.usesBlockLight()) {
+				client.gameRenderer.getLighting().setupFor(Lighting.Entry.ITEMS_FLAT);
+			} else {
+				client.gameRenderer.getLighting().setupFor(Lighting.Entry.ITEMS_3D);
+			}
+
+			RenderSystem.enableScissorForRenderTypeDraws(0, 0, this.textureSize, this.textureSize);
+			this.itemRenderState.submit(matrices, submitNodeStorage, 15728880, OverlayTexture.NO_OVERLAY, 0);
+			featureRenderDispatcher.renderAllFeatures();
+			client.renderBuffers().bufferSource().endBatch();
+			RenderSystem.disableScissorForRenderTypeDraws();
+			matrices.popPose();
+
+			takeScreenshotAsync(this.framebuffer, id, stack, completionCounter);
+
+		} catch (Exception e) {
+			BlockExporter.LOGGER.error("Failed to export item: {}", id, e);
+			this.failedExports.add(stack);
+			completionCounter.incrementAndGet();
+		}
+	}
+
+	private void takeScreenshotAsync(RenderTarget framebuffer, Identifier itemId, ItemStack itemStack, AtomicInteger completionCounter) {
+		takeScreenshot(framebuffer, (image) -> {
+			CompletableFuture.runAsync(() -> {
+				try {
+					this.fileWriteSemaphore.acquire();
+					Path filePath = exportDirectory.resolve(itemId.getNamespace() + "_" + itemId.getPath() + ".png");
+					image.writeToFile(filePath);
+					BlockExporter.LOGGER.debug("Async exported: {}", filePath.getFileName());
+				} catch (IOException e) {
+					BlockExporter.LOGGER.error("Failed to save exported item image: {}", itemId, e);
+					this.failedExports.add(itemStack);
+				} catch (InterruptedException e) {
+					BlockExporter.LOGGER.error("Screenshot thread interrupted for item: {}", itemId, e);
+					this.failedExports.add(itemStack);
+					Thread.currentThread().interrupt();
+				} finally {
+					if (image != null) {
+						image.close();
+					}
+					this.fileWriteSemaphore.release();
+					completionCounter.incrementAndGet();
+				}
+			}, fileWriteExecutor);
+		});
+	}
+
+	public static void takeScreenshot(RenderTarget framebuffer, Consumer<NativeImage> callback) {
 		takeScreenshot(framebuffer, 1, callback);
 	}
 
-	public static void takeScreenshot(Framebuffer framebuffer, int downscaleFactor, Consumer<NativeImage> callback) {
-		int i = framebuffer.textureWidth;
-		int j = framebuffer.textureHeight;
-		GpuTexture gpuTexture = framebuffer.getColorAttachment();
+	public static void takeScreenshot(RenderTarget framebuffer, int downscaleFactor, Consumer<NativeImage> callback) {
+		int width = framebuffer.width;
+		int height = framebuffer.height;
+		GpuTexture gpuTexture = framebuffer.getColorTexture();
 		if (gpuTexture == null) {
 			throw new IllegalStateException("Tried to capture screenshot of an incomplete framebuffer");
-		} else if (i % downscaleFactor == 0 && j % downscaleFactor == 0) {
-			GpuBuffer gpuBuffer = RenderSystem.getDevice().createBuffer(() -> "Screenshot buffer", 9, i * j * gpuTexture.getFormat().pixelSize());
+		} else if (width % downscaleFactor == 0 && height % downscaleFactor == 0) {
+			GpuBuffer gpuBuffer = RenderSystem.getDevice().createBuffer(() -> "Screenshot buffer", 9, (long) width * height * gpuTexture.getFormat().pixelSize());
 			CommandEncoder commandEncoder = RenderSystem.getDevice().createCommandEncoder();
-			RenderSystem.getDevice().createCommandEncoder().copyTextureToBuffer(gpuTexture, gpuBuffer, 0, () -> {
+			RenderSystem.getDevice().createCommandEncoder().copyTextureToBuffer(gpuTexture, gpuBuffer, 0L, () -> {
 				try (GpuBuffer.MappedView mappedView = commandEncoder.mapBuffer(gpuBuffer, true, false)) {
-					int l = j / downscaleFactor;
-					int m = i / downscaleFactor;
-					NativeImage nativeImage = new NativeImage(m, l, false);
+					int outputWidth = width / downscaleFactor;
+					int outputHeight = height / downscaleFactor;
+					NativeImage nativeImage = new NativeImage(outputWidth, outputHeight, false);
 
-					for (int n = 0; n < l; n++) {
-						for (int o = 0; o < m; o++) {
+					for (int y = 0; y < outputHeight; y++) {
+						for (int x = 0; x < outputWidth; x++) {
 							if (downscaleFactor == 1) {
-								int p = mappedView.data().getInt((o + n * i) * gpuTexture.getFormat().pixelSize());
-								nativeImage.setColor(o, j - n - 1, p);
+								int abgr = mappedView.data().getInt((x + y * width) * gpuTexture.getFormat().pixelSize());
+								nativeImage.setPixelABGR(x, height - y - 1, abgr);
 							} else {
-								int p = 0;
-								int q = 0;
-								int r = 0;
-								int a = 0;
-
+								int r = 0, g = 0, b = 0, a = 0;
 								for (int s = 0; s < downscaleFactor; s++) {
 									for (int t = 0; t < downscaleFactor; t++) {
-										int u = mappedView.data().getInt((o * downscaleFactor + s + (n * downscaleFactor + t) * i) * gpuTexture.getFormat().pixelSize());
-										p += ColorHelper.getRed(u);
-										q += ColorHelper.getGreen(u);
-										r += ColorHelper.getBlue(u);
-										a += ColorHelper.getAlpha(u);
+										int abgr = mappedView.data().getInt((x * downscaleFactor + s + (y * downscaleFactor + t) * width) * gpuTexture.getFormat().pixelSize());
+										r += abgr & 0xFF;
+										g += (abgr >> 8) & 0xFF;
+										b += (abgr >> 16) & 0xFF;
+										a += (abgr >>> 24);
 									}
 								}
-
-								int s = downscaleFactor * downscaleFactor;
-								nativeImage.setColor(o, l - n - 1, ColorHelper.getArgb(a / s, p / s, q / s, r / s));
+								int samples = downscaleFactor * downscaleFactor;
+								nativeImage.setPixelABGR(x, outputHeight - y - 1,
+									((a / samples) << 24) | ((b / samples) << 16) | ((g / samples) << 8) | (r / samples));
 							}
 						}
 					}
@@ -228,14 +222,14 @@ public class ItemRenderer implements AutoCloseable {
 		}
 	}
 
-    public List<ItemStack> getFailedExports() {
-        return List.copyOf(this.failedExports);
-    }
+	public List<ItemStack> getFailedExports() {
+		return List.copyOf(this.failedExports);
+	}
 
-    @Override
-    public void close() {
-        this.fileWriteExecutor.shutdown();
-        this.projectionMatrix.close();
-        this.framebuffer.delete();
-    }
+	@Override
+	public void close() {
+		this.fileWriteExecutor.shutdown();
+		this.projectionMatrixBuffer.close();
+		this.framebuffer.destroyBuffers();
+	}
 }
