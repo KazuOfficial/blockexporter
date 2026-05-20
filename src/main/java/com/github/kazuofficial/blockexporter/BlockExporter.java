@@ -1,17 +1,15 @@
 package com.github.kazuofficial.blockexporter;
 
-import net.fabricmc.api.ModInitializer;
-
+import net.minecraftforge.fml.common.Mod;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.mojang.logging.LogUtils;
 
-public class BlockExporter implements ModInitializer {
-	public static final String MOD_ID = "blockexporter";
+@Mod(BlockExporter.MOD_ID)
+public class BlockExporter {
+    public static final String MOD_ID = "blockexporter";
+    public static final Logger LOGGER = LogUtils.getLogger();
 
-	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
-
-	@Override
-	public void onInitialize() {
-		LOGGER.info("Block Exporter mod initialized!");
-	}
+    public BlockExporter() {
+        LOGGER.info("Block Exporter mod initialized!");
+    }
 }

@@ -1,74 +1,46 @@
 plugins {
-	id 'fabric-loom' version "${loom_version}"
-	id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '6.0.+'
 }
 
-version = project.mod_version
-group = project.maven_group
+version = '0.1.0'
+group = 'com.github.kazuofficial.blockexporter'
 
 base {
-	archivesName = project.archives_base_name
-}
-
-repositories {
-}
-
-loom {
-	splitEnvironmentSourceSets()
-
-	mods {
-		"blockexporter" {
-			sourceSet sourceSets.main
-			sourceSet sourceSets.client
-		}
-	}
-
-}
-
-dependencies {
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-
-	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	
-}
-
-processResources {
-	inputs.property "version", project.version
-
-	filesMatching("fabric.mod.json") {
-		expand "version": inputs.properties.version
-	}
-}
-
-tasks.withType(JavaCompile).configureEach {
-	it.options.release = 21
+    archivesName = 'blockexporter-forge-1.20.1'
 }
 
 java {
-	withSourcesJar()
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+}
 
-	sourceCompatibility = JavaVersion.VERSION_21
-	targetCompatibility = JavaVersion.VERSION_21
+minecraft {
+    mappings channel: 'official', version: '1.20.1'
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods {
+                blockexporter {
+                    source sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    minecraft 'net.minecraftforge:forge:1.20.1-47.3.0'
 }
 
 jar {
-	inputs.property "archivesName", project.base.archivesName
-
-	from("LICENSE") {
-		rename { "${it}_${inputs.properties.archivesName}"}
-	}
-}
-
-publishing {
-	publications {
-		create("mavenJava", MavenPublication) {
-			artifactId = project.archives_base_name
-			from components.java
-		}
-	}
-
-	repositories {
-	}
+    manifest {
+        attributes([
+            "Specification-Title"   : "blockexporter",
+            "Specification-Version" : project.version,
+            "Implementation-Title"  : "blockexporter",
+            "Implementation-Version": project.version,
+        ])
+    }
 }
